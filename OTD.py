@@ -25,25 +25,6 @@ def carregar_dados():
     return df, metas
 
 
-def calcular_otd(df, autorizado, contrato):
-    df_filtrado = df[(df['ANO'] == 2025)]
-
-    if autorizado != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['SAW'].str.upper().str.contains(autorizado.upper(), na=False)]
-
-    if contrato != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['CONTRATO'] == contrato]
-
-    agrupado = df_filtrado.groupby(['MÊS_ANO', 'CONTRATO']).agg(
-        total_chamados=('NOTA', 'count'),
-        chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
-    ).reset_index()
-
-    agrupado['OTD (%)'] = (agrupado['chamados_no_prazo'] / agrupado['total_chamados']) * 100
-
-    return agrupado, df_filtrado
-
-
 def plot_evolucao_anual(agrupado, meta_otd):
     evolucao = agrupado.groupby('MÊS_ANO').agg(
         OTD_medio=('OTD (%)', 'mean')
@@ -85,30 +66,52 @@ def desempenho_por_ec(df):
 
 # ========== APP ========== #
 df, metas = carregar_dados()
+df_filtrado_sidebar = df.copy()
 
-# Sidebar - Filtros
-autorizados = sorted(df['SAW'].dropna().unique())
-autorizado = st.sidebar.selectbox('Selecione o Autorizado (SAW):', ['Todos'] + autorizados)
+# Sidebar - Filtros Interdependentes
+# Ordem: Especialista -> Autorizado -> Contrato
 
-contratos_disponiveis = sorted(df['CONTRATO'].dropna().unique())
-contrato = st.sidebar.selectbox('Selecione o Contrato:', ['Todos'] + contratos_disponiveis)
+# Filtro 1: Especialista de Campo (EC)
+especialistas = sorted(df_filtrado_sidebar['EC'].dropna().unique())
+ec_selecionado = st.sidebar.selectbox('👨‍🔧 Filtrar por Especialista de Campo (EC):', ['Todos'] + especialistas)
 
-# Calcular dados
-agrupado, df_filtrado = calcular_otd(df, autorizado, contrato)
+if ec_selecionado != 'Todos':
+    df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['EC'] == ec_selecionado]
 
-# Obter meta
-meta_otd = None
-if contrato != 'Todos':
-    meta_info = metas[metas['CONTRATO'] == contrato]
-    if not meta_info.empty:
-        meta_otd = meta_info['META OTD (%)'].values[0]
+# Filtro 2: Autorizado (SAW)
+autorizados = sorted(df_filtrado_sidebar['SAW'].dropna().unique())
+autorizado_selecionado = st.sidebar.selectbox('🔧 Selecione o Autorizado (SAW):', ['Todos'] + autorizados)
+
+if autorizado_selecionado != 'Todos':
+    df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['SAW'] == autorizado_selecionado]
+
+# Filtro 3: Contrato
+contratos_disponiveis = sorted(df_filtrado_sidebar['CONTRATO'].dropna().unique())
+contrato_selecionado = st.sidebar.selectbox('📄 Selecione o Contrato:', ['Todos'] + contratos_disponiveis)
+
+if contrato_selecionado != 'Todos':
+    df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['CONTRATO'] == contrato_selecionado]
+
+# Usar o dataframe final filtrado (df_filtrado_sidebar) no restante do aplicativo
+df_filtrado = df_filtrado_sidebar.copy()
+
+# Filtro principal do dashboard (para o ano de 2025)
+df_filtrado = df_filtrado[(df_filtrado['ANO'] == 2025)]
 
 # KPIs
-titulo = f" Análise "
-titulo += f"do autorizado: **{autorizado}**" if autorizado != 'Todos' else "**de todos os autorizados**"
-titulo += f" | Contrato: **{contrato}**" if contrato != 'Todos' else " | **Todos os contratos**"
+st.title("📊 Dashboard de OTD - Contratos")
+titulo = "Análise "
 
-st.title('Dashboard de OTD - Contratos')
+if ec_selecionado != 'Todos':
+    titulo += f"do especialista: **{ec_selecionado}**"
+elif autorizado_selecionado != 'Todos':
+    titulo += f"do autorizado: **{autorizado_selecionado}**"
+else:
+    titulo += "geral"
+
+if contrato_selecionado != 'Todos':
+    titulo += f" | Contrato: **{contrato_selecionado}**"
+
 st.markdown(f"### {titulo}")
 
 col1, col2, col3, col4 = st.columns(4)
@@ -123,41 +126,74 @@ col2.metric("Total de Chamados", int(total_chamados))
 col3.metric("✅ No Prazo", int(chamados_no_prazo))
 col4.metric("⏰ Em Atraso", int(chamados_atraso))
 
-# Aviso se abaixo da meta
+# Meta OTD
+meta_otd = None
+if contrato_selecionado != 'Todos':
+    meta_info = metas[metas['CONTRATO'] == contrato_selecionado]
+    if not meta_info.empty:
+        meta_otd = meta_info['META OTD (%)'].values[0]
+elif ec_selecionado != 'Todos':
+    contratos_do_ec = df_filtrado['CONTRATO'].unique()
+    metas_filtradas = metas[metas['CONTRATO'].isin(contratos_do_ec)]
+    meta_otd = metas_filtradas['META OTD (%)'].mean() if not metas_filtradas.empty else None
+
 if meta_otd and otd_ponderado < meta_otd:
-    st.error(f"⚠️ O OTD atual ({otd_ponderado:.2f}%) está abaixo da meta de {meta_otd}%")
+    st.error(f"⚠️ O OTD atual ({otd_ponderado:.2f}%) está abaixo da meta de {meta_otd:.1f}%")
 
-# Gráfico de evolução anual
-if not agrupado.empty:
-    st.plotly_chart(plot_evolucao_anual(agrupado, meta_otd), use_container_width=True)
-else:
-    st.warning("⚠️ Não há dados para o filtro selecionado.")
-
-# Desempenho por Especialista
-st.markdown("## Desempenho por Especialista de Campo (EC)")
-ec_resumo = desempenho_por_ec(df_filtrado)
-st.dataframe(ec_resumo, use_container_width=True)
-
-# Ranking - Piores Autorizados
-st.markdown("## Autorizados com Pior OTD")
-ranking_aut = df.groupby('SAW').agg(
+# Evolução mensal OTD
+agrupado = df_filtrado.groupby(['MÊS_ANO']).agg(
     total_chamados=('NOTA', 'count'),
     chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
 ).reset_index()
-ranking_aut['OTD (%)'] = (ranking_aut['chamados_no_prazo'] / ranking_aut['total_chamados']) * 100
-ranking_aut = ranking_aut.sort_values(by='OTD (%)').head(10)
-st.dataframe(ranking_aut, use_container_width=True)
+agrupado['OTD (%)'] = (agrupado['chamados_no_prazo'] / agrupado['total_chamados']) * 100
+
+if not agrupado.empty:
+    st.plotly_chart(plot_evolucao_anual(agrupado, meta_otd), use_container_width=True)
+else:
+    st.warning("⚠️ Não há dados para os filtros selecionados.")
+
+# Tabela de desempenho por EC (somente se EC não for selecionado)
+if ec_selecionado == 'Todos':
+    st.markdown("## Desempenho por Especialista de Campo (EC)")
+    ec_resumo = desempenho_por_ec(df_filtrado)
+    st.dataframe(ec_resumo, use_container_width=True)
+
+# Contratos do EC selecionado (ranking por OTD)
+if ec_selecionado != 'Todos':
+    st.markdown("## Contratos")
+    ranking_contratos_ec = df_filtrado.groupby('CONTRATO').agg(
+        total_chamados=('NOTA', 'count'),
+        chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
+    ).reset_index()
+    ranking_contratos_ec['OTD (%)'] = (ranking_contratos_ec['chamados_no_prazo'] / ranking_contratos_ec['total_chamados']) * 100
+    
+    # Adicionar a coluna de metas
+    ranking_contratos_ec = pd.merge(ranking_contratos_ec, metas, on='CONTRATO', how='left')
+
+    st.dataframe(ranking_contratos_ec.sort_values(by='OTD (%)'), use_container_width=True)
+
+# Ranking - Piores Autorizados (exibido apenas se EC não for selecionado)
+if ec_selecionado == 'Todos':
+    st.markdown("## Autorizados com Pior OTD")
+    ranking_aut = df_filtrado.groupby('SAW').agg(
+        total_chamados=('NOTA', 'count'),
+        chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
+    ).reset_index()
+    ranking_aut['OTD (%)'] = (ranking_aut['chamados_no_prazo'] / ranking_aut['total_chamados']) * 100
+    st.dataframe(ranking_aut.sort_values(by='OTD (%)').head(10), use_container_width=True)
 
 # Ranking - Piores Contratos
 st.markdown("## Contratos com Pior OTD")
-ranking_contratos = df.groupby('CONTRATO').agg(
+ranking_contratos = df_filtrado.groupby('CONTRATO').agg(
     total_chamados=('NOTA', 'count'),
     chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
 ).reset_index()
 ranking_contratos['OTD (%)'] = (ranking_contratos['chamados_no_prazo'] / ranking_contratos['total_chamados']) * 100
-ranking_contratos = ranking_contratos.sort_values(by='OTD (%)').head(10)
-st.dataframe(ranking_contratos, use_container_width=True)
 
+# Adicionar a coluna de metas
+ranking_contratos = pd.merge(ranking_contratos, metas, on='CONTRATO', how='left')
+
+st.dataframe(ranking_contratos.sort_values(by='OTD (%)').head(10), use_container_width=True)
 
 
 
