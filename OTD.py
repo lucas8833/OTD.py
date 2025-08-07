@@ -73,21 +73,21 @@ df_filtrado_sidebar = df.copy()
 
 # Filtro 1: Especialista de Campo (EC)
 especialistas = sorted(df_filtrado_sidebar['EC'].dropna().unique())
-ec_selecionado = st.sidebar.selectbox('👨‍🔧 Filtrar por Especialista de Campo (EC):', ['Todos'] + especialistas)
+ec_selecionado = st.sidebar.selectbox('Filtrar por Especialista de Campo (EC):', ['Todos'] + especialistas)
 
 if ec_selecionado != 'Todos':
     df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['EC'] == ec_selecionado]
 
 # Filtro 2: Autorizado (SAW)
 autorizados = sorted(df_filtrado_sidebar['SAW'].dropna().unique())
-autorizado_selecionado = st.sidebar.selectbox('🔧 Selecione o Autorizado (SAW):', ['Todos'] + autorizados)
+autorizado_selecionado = st.sidebar.selectbox('Selecione o Autorizado (SAW):', ['Todos'] + autorizados)
 
 if autorizado_selecionado != 'Todos':
     df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['SAW'] == autorizado_selecionado]
 
 # Filtro 3: Contrato
 contratos_disponiveis = sorted(df_filtrado_sidebar['CONTRATO'].dropna().unique())
-contrato_selecionado = st.sidebar.selectbox('📄 Selecione o Contrato:', ['Todos'] + contratos_disponiveis)
+contrato_selecionado = st.sidebar.selectbox('Selecione o Contrato:', ['Todos'] + contratos_disponiveis)
 
 if contrato_selecionado != 'Todos':
     df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['CONTRATO'] == contrato_selecionado]
