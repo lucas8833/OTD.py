@@ -9,7 +9,7 @@ st.set_page_config(page_title="Dashboard OTD", page_icon="📊", layout="wide")
 # Logo na barra lateral
 logo = Image.open('logo_DFS.png')
 st.sidebar.image(logo, use_container_width=True)
-st.sidebar.title("📑 Filtros")
+st.sidebar.title("Filtros")
 
 # ========== FUNÇÕES ========== #
 @st.cache_data
@@ -32,7 +32,7 @@ def plot_evolucao_anual(agrupado, meta_otd):
 
     fig = px.bar(
         evolucao, x='MÊS_ANO', y='OTD_medio',
-        title='📊 Evolução Anual do OTD (%)',
+        title='Evolução Anual do OTD (%)',
         labels={'OTD_medio': 'OTD Médio (%)'}
     )
     fig.update_layout(
@@ -62,6 +62,17 @@ def desempenho_por_ec(df):
     resumo['OTD (%)'] = (resumo['chamados_no_prazo'] / resumo['total_chamados']) * 100
     resumo = resumo.sort_values(by='OTD (%)', ascending=False)
     return resumo
+
+
+# Função de estilo para a tabela
+def destacar_abaixo_da_meta(row):
+    """
+    Destaca a linha inteira em vermelho se o OTD for menor que a meta.
+    """
+    otd = row['OTD (%)']
+    meta = row['META OTD (%)']
+    color = 'background-color: #ffe6e6' if otd < meta else ''
+    return [color] * len(row)
 
 
 # ========== APP ========== #
@@ -138,7 +149,7 @@ elif ec_selecionado != 'Todos':
     meta_otd = metas_filtradas['META OTD (%)'].mean() if not metas_filtradas.empty else None
 
 if meta_otd and otd_ponderado < meta_otd:
-    st.error(f"⚠️ O OTD atual ({otd_ponderado:.2f}%) está abaixo da meta de {meta_otd:.1f}%")
+    st.error(f"O OTD atual ({otd_ponderado:.2f}%) está abaixo da meta de {meta_otd:.1f}%")
 
 # Evolução mensal OTD
 agrupado = df_filtrado.groupby(['MÊS_ANO']).agg(
@@ -150,17 +161,28 @@ agrupado['OTD (%)'] = (agrupado['chamados_no_prazo'] / agrupado['total_chamados'
 if not agrupado.empty:
     st.plotly_chart(plot_evolucao_anual(agrupado, meta_otd), use_container_width=True)
 else:
-    st.warning("⚠️ Não há dados para os filtros selecionados.")
+    st.warning("Não há dados para os filtros selecionados.")
+
+
+# Tabela de desempenho por Autorizado
+st.markdown("## Desempenho por SAW")
+ranking_aut = df_filtrado.groupby('SAW').agg(
+    total_chamados=('NOTA', 'count'),
+    chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
+).reset_index()
+ranking_aut['OTD (%)'] = (ranking_aut['chamados_no_prazo'] / ranking_aut['total_chamados']) * 100
+st.dataframe(ranking_aut.sort_values(by='OTD (%)', ascending=False), use_container_width=True)
+
 
 # Tabela de desempenho por EC (somente se EC não for selecionado)
 if ec_selecionado == 'Todos':
-    st.markdown("## Desempenho por Especialista de Campo (EC)")
+    st.markdown("## Desempenho por Especialista de Campo")
     ec_resumo = desempenho_por_ec(df_filtrado)
     st.dataframe(ec_resumo, use_container_width=True)
 
 # Contratos do EC selecionado (ranking por OTD)
 if ec_selecionado != 'Todos':
-    st.markdown("## Contratos")
+    st.markdown("## Contratos suportados pelo Especialista")
     ranking_contratos_ec = df_filtrado.groupby('CONTRATO').agg(
         total_chamados=('NOTA', 'count'),
         chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
@@ -169,12 +191,13 @@ if ec_selecionado != 'Todos':
     
     # Adicionar a coluna de metas
     ranking_contratos_ec = pd.merge(ranking_contratos_ec, metas, on='CONTRATO', how='left')
-
-    st.dataframe(ranking_contratos_ec.sort_values(by='OTD (%)'), use_container_width=True)
+    
+    # Aplicar a estilização
+    st.dataframe(ranking_contratos_ec.sort_values(by='OTD (%)').style.apply(destacar_abaixo_da_meta, axis=1), use_container_width=True)
 
 # Ranking - Piores Autorizados (exibido apenas se EC não for selecionado)
 if ec_selecionado == 'Todos':
-    st.markdown("## Autorizados com Pior OTD")
+    st.markdown("## Autorizados com pior OTD")
     ranking_aut = df_filtrado.groupby('SAW').agg(
         total_chamados=('NOTA', 'count'),
         chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
@@ -183,7 +206,7 @@ if ec_selecionado == 'Todos':
     st.dataframe(ranking_aut.sort_values(by='OTD (%)').head(10), use_container_width=True)
 
 # Ranking - Piores Contratos
-st.markdown("## Contratos com Pior OTD")
+st.markdown("## Contratos com pior OTD")
 ranking_contratos = df_filtrado.groupby('CONTRATO').agg(
     total_chamados=('NOTA', 'count'),
     chamados_no_prazo=('STATUS', lambda x: (x == 'NO PRAZO').sum())
@@ -193,7 +216,8 @@ ranking_contratos['OTD (%)'] = (ranking_contratos['chamados_no_prazo'] / ranking
 # Adicionar a coluna de metas
 ranking_contratos = pd.merge(ranking_contratos, metas, on='CONTRATO', how='left')
 
-st.dataframe(ranking_contratos.sort_values(by='OTD (%)').head(10), use_container_width=True)
+# Aplicar a estilização
+st.dataframe(ranking_contratos.sort_values(by='OTD (%)').head(10).style.apply(destacar_abaixo_da_meta, axis=1), use_container_width=True)
 
 
 
