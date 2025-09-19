@@ -103,8 +103,17 @@ contrato_selecionado = st.sidebar.selectbox('Selecione o Contrato:', ['Todos'] +
 if contrato_selecionado != 'Todos':
     df_filtrado_sidebar = df_filtrado_sidebar[df_filtrado_sidebar['CONTRATO'] == contrato_selecionado]
 
+
+# NOVO FILTRO DE MESES
+meses_disponiveis = sorted(df_filtrado_sidebar['MÊS_ANO'].dropna().unique())
+meses_selecionados = st.sidebar.multiselect('Selecione o(s) Mês(es):', meses_disponiveis)
+
 # Usar o dataframe final filtrado (df_filtrado_sidebar) no restante do aplicativo
 df_filtrado = df_filtrado_sidebar.copy()
+
+# Aplicar o filtro de meses
+if meses_selecionados:
+    df_filtrado = df_filtrado[df_filtrado['MÊS_ANO'].isin(meses_selecionados)]
 
 # Filtro principal do dashboard (para o ano de 2025)
 df_filtrado = df_filtrado[(df_filtrado['ANO'] == 2025)]
